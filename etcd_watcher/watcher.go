@@ -1,3 +1,4 @@
+// Package etcd_watcher ETCD键值监听器
 package etcd_watcher
 
 import (
@@ -13,7 +14,7 @@ var (
 	timeOut = time.Duration(3) * time.Second // 超时市场
 )
 
-// Listener
+// Listener 对外通知
 type Listener interface {
 	Set([]byte, []byte)
 	Create([]byte, []byte)
@@ -23,7 +24,7 @@ type Listener interface {
 
 // EtcdWatcher ETCD key监视器
 type EtcdWatcher struct {
-	cli          *clientv3.Client
+	cli          *clientv3.Client // etcd client
 	wg           sync.WaitGroup
 	listener     Listener
 	mu           sync.Mutex
@@ -40,23 +41,23 @@ func NewEtcdWatcher(servers []string) (*EtcdWatcher, error) {
 		return nil, err
 	}
 
-	em := &EtcdWatcher{
+	ew := &EtcdWatcher{
 		cli:          cli,
 		closeHandler: make(map[string]func()),
 	}
 
-	return em, nil
+	return ew, nil
 }
 
 // AddWatch 添加监视
 func (mgr *EtcdWatcher) AddWatch(key string, prefix bool, target Listener) bool {
 	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
 	if _, ok := mgr.closeHandler[key]; ok {
 		return false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	mgr.closeHandler[key] = cancel
-	mgr.mu.Unlock()
 
 	mgr.wg.Add(1)
 	go mgr.watch(ctx, key, prefix, target)
@@ -67,27 +68,25 @@ func (mgr *EtcdWatcher) AddWatch(key string, prefix bool, target Listener) bool 
 // RemoveWatch 删除监视
 func (mgr *EtcdWatcher) RemoveWatch(key string) bool {
 	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
 	cancel, ok := mgr.closeHandler[key]
 	if !ok {
 		return false
 	}
 	cancel()
 	delete(mgr.closeHandler, key)
-	mgr.mu.Unlock()
-
+	
 	return true
 }
 
 // ClearWatch 清除所有监视
 func (mgr *EtcdWatcher) ClearWatch() {
-
 	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
 	for k := range mgr.closeHandler {
 		mgr.closeHandler[k]()
 	}
 	mgr.closeHandler = make(map[string]func())
-	mgr.mu.Unlock()
-
 }
 
 // Close 关闭
@@ -105,35 +104,35 @@ func (mgr *EtcdWatcher) Close(wait bool) {
 func (mgr *EtcdWatcher) watch(ctx context.Context, key string, prefix bool, listener Listener) error {
 	defer mgr.wg.Done()
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeOut)
+	ctx1, cancel := context.WithTimeout(context.Background(), timeOut)
 	defer cancel()
-	var resp *clientv3.GetResponse
+	var getResp *clientv3.GetResponse
 	var err error
 	if prefix {
-		resp, err = mgr.cli.Get(ctx, key, clientv3.WithPrefix())
+		getResp, err = mgr.cli.Get(ctx1, key, clientv3.WithPrefix())
 	} else {
-		resp, err = mgr.cli.Get(ctx, key)
+		getResp, err = mgr.cli.Get(ctx1, key)
 	}
 	if err != nil {
 		return err
 	}
 
-	for _, ev := range resp.Kvs {
+	for _, ev := range getResp.Kvs {
 		listener.Set(ev.Key, ev.Value)
 	}
 
 	var watchChan clientv3.WatchChan
 	if prefix {
-		watchChan = mgr.cli.Watch(context.Background(), key, clientv3.WithPrefix(), clientv3.WithRev(resp.Header.Revision+1))
+		watchChan = mgr.cli.Watch(context.Background(), key, clientv3.WithPrefix(), clientv3.WithRev(getResp.Header.Revision+1))
 	} else {
-		watchChan = mgr.cli.Watch(context.Background(), key, clientv3.WithRev(resp.Header.Revision+1))
+		watchChan = mgr.cli.Watch(context.Background(), key, clientv3.WithRev(getResp.Header.Revision+1))
 	}
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case resp := <-watchChan:
-			err := wresp.Err()
+			err := resp.Err()
 			if err != nil {
 				return err
 			}
