@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	timeOut = time.Duration(3) * time.Second // 超时市场
+	timeOut = time.Duration(3) * time.Second // 超时
 )
 
 // Listener 对外通知
@@ -50,7 +50,7 @@ func NewEtcdWatcher(servers []string) (*EtcdWatcher, error) {
 }
 
 // AddWatch 添加监视
-func (mgr *EtcdWatcher) AddWatch(key string, prefix bool, target Listener) bool {
+func (mgr *EtcdWatcher) AddWatch(key string, prefix bool, listener Listener) bool {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	if _, ok := mgr.closeHandler[key]; ok {
@@ -60,7 +60,7 @@ func (mgr *EtcdWatcher) AddWatch(key string, prefix bool, target Listener) bool 
 	mgr.closeHandler[key] = cancel
 
 	mgr.wg.Add(1)
-	go mgr.watch(ctx, key, prefix, target)
+	go mgr.watch(ctx, key, prefix, listener)
 
 	return true
 }
@@ -75,7 +75,7 @@ func (mgr *EtcdWatcher) RemoveWatch(key string) bool {
 	}
 	cancel()
 	delete(mgr.closeHandler, key)
-	
+
 	return true
 }
 
