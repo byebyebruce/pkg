@@ -213,7 +213,7 @@ func (c *ChatGPT) ChatWithContext(question string) (answer string, err error) {
 	if err != nil {
 		return "", err
 	}
-	resp.Choices[0].Text = formatAnswer(resp.Choices[0].Text)
+	//resp.Choices[0].Text = formatAnswer(resp.Choices[0].Text)
 	c.ChatContext.old = append(c.ChatContext.old, conversation{
 		Role:   c.ChatContext.humanRole,
 		Prompt: question,
